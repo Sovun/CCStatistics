@@ -45,7 +45,6 @@ def test_get_google_credentials_refreshes_expired_token(tmp_path):
 def test_get_google_credentials_runs_oauth_flow_when_no_token(tmp_path):
     """get_google_credentials runs OAuth flow when no token file exists."""
     mock_creds = MagicMock()
-    mock_creds.valid = True
 
     with patch("src.auth.os.path.exists", return_value=False), \
          patch("src.auth.InstalledAppFlow") as MockFlow, \
