@@ -21,22 +21,37 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 # Synonyms for canonical column names.
 # The reader will match sheet headers (case-insensitive) against these lists.
 COLUMN_SYNONYMS = {
-    "task": ["task", "task name"],
-    "task_description": ["task description", "description", "details", "feature", "story", "ticket"],
+    "task": [
+        "task", "task name",
+    ],
+    "task_description": [
+        "task description", "description", "details", "feature", "story", "ticket",
+    ],
     "estimated_hours": [
-        "estimated hours", "estimate", "estimated", "without ai", "no ai",
+        # Actual header used in sheets (matched case-insensitively):
+        "estimate task via standard flow (without ai)",
+        "estimate task via standard flow (without ai) ",  # trailing space variant
+        # Common shorter variants engineers may use:
+        "estimated hours", "estimated (without ai)", "estimate without ai",
+        "estimate", "estimated", "without ai", "no ai",
         "manual estimate", "planned hours", "original estimate", "non-ai estimate",
+        "standard flow estimate", "standard estimate",
     ],
     "actual_hours": [
-        "actual hours", "actual", "with claude", "with ai", "claude hours",
-        "real hours", "time spent", "hours spent",
+        # Actual header used in sheets:
+        "actual time spent with ai",
+        "actual time spent with ai ",  # trailing space variant
+        # Common shorter variants:
+        "actual hours", "actual time", "actual", "time spent with ai",
+        "with claude", "with ai", "claude hours",
+        "real hours", "time spent", "hours spent", "ai time",
     ],
     "deviation": [
         "deviation", "ratio", "actual/estimate", "efficiency", "ai ratio",
-        "time ratio", "deviation (%)", "deviation(%)",
+        "time ratio", "deviation (%)", "deviation(%)", "ai deviation",
     ],
     "date": ["date", "week", "sprint", "period", "created", "completed"],
-    "engineer": ["engineer", "author", "name", "person", "dev", "developer"],
+    "engineer": ["engineer", "author", "person", "dev", "developer"],
     "comments": [
         "comments", "comment", "notes", "note", "feedback", "observations",
         "what was good", "what was bad", "remarks", "review",
