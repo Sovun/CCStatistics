@@ -88,3 +88,20 @@ def test_aggregate_stats_handles_missing_hours_saved_when_hours_are_nan():
     result = aggregate_stats([df])
     row = result["all_tasks"].iloc[0]
     assert math.isnan(row["hours_saved"])
+
+
+def test_aggregate_stats_summary_handles_all_nan_hours():
+    """Summary reports NaN totals when all hour values are NaN, not 0.0."""
+    import math
+    df = pd.DataFrame({
+        "task": ["Task X"],
+        "estimated_hours": [float("nan")],
+        "actual_hours": [float("nan")],
+        "engineer": ["Zara"],
+        "comments": [""],
+    })
+    result = aggregate_stats([df])
+    summary = result["summary"]
+    assert math.isnan(summary["total_estimated_hours"])
+    assert math.isnan(summary["total_actual_hours"])
+    assert summary["overall_efficiency_ratio"] == 0.0
