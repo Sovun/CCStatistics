@@ -89,3 +89,30 @@ def test_get_or_create_sheet_creates_new_when_absent(client):
     result = client.get_or_create_sheet("folder456", "CC Statistics Aggregated")
 
     assert result == "new789"
+
+
+def test_list_sheets_in_folder_follows_pagination(client):
+    """list_sheets_in_folder follows nextPageToken to retrieve all pages."""
+    mock_service = _attach_mock_service(client)
+
+    page1 = {"nextPageToken": "token_abc", "files": [{"id": "id1", "name": "Sheet1"}]}
+    page2 = {"files": [{"id": "id2", "name": "Sheet2"}]}
+    mock_service.files().list().execute.side_effect = [page1, page2]
+
+    result = client.list_sheets_in_folder("folder123")
+    assert result == [{"id": "id1", "name": "Sheet1"}, {"id": "id2", "name": "Sheet2"}]
+
+
+def test_find_subfolder_handles_single_quote_in_name(client):
+    """find_subfolder escapes single quotes in subfolder name for Drive query."""
+    mock_service = _attach_mock_service(client)
+    mock_service.files().list().execute.return_value = {
+        "files": [{"id": "sub777", "name": "Engineer's Stats"}]
+    }
+
+    result = client.find_subfolder("parent123", "Engineer's Stats")
+    assert result == "sub777"
+
+    # Verify the query contained the escaped name
+    call_kwargs = mock_service.files().list.call_args.kwargs
+    assert "Engineer\\'s Stats" in call_kwargs["q"]
