@@ -61,13 +61,27 @@ def run_pipeline(
         print(f"  Total hours saved:      {summary.get('total_hours_saved', 0)}")
 
     comments = result["comments"]
-    print(f"Analyzing {len(comments)} comment(s) with Claude AI...")
-    analysis = analyze_comments(
-        comments, api_key=anthropic_api_key, model=claude_model
-    )
 
     print(f"Finding '{aggregated_folder_name}' subfolder...")
-    subfolder_id = drive.find_subfolder(folder_id, aggregated_folder_name)
+    try:
+        subfolder_id = drive.find_subfolder(folder_id, aggregated_folder_name)
+    except ValueError as e:
+        print(f"\nERROR: {e}")
+        print(
+            f"Please ensure the '{aggregated_folder_name}' subfolder exists "
+            f"inside the Drive folder {folder_id}."
+        )
+        sys.exit(1)
+
+    print(f"Analyzing {len(comments)} comment(s) with Claude AI...")
+    try:
+        analysis = analyze_comments(
+            comments, api_key=anthropic_api_key, model=claude_model
+        )
+    except (RuntimeError, ValueError) as e:
+        print(f"  WARNING: Comment analysis failed: {e}")
+        print("  Insights tab will be skipped.")
+        analysis = {"raw_analysis": "", "comment_count": len(comments)}
 
     print(f"Getting or creating output sheet '{output_sheet_name}'...")
     output_sheet_id = drive.get_or_create_sheet(subfolder_id, output_sheet_name)

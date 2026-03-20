@@ -144,3 +144,69 @@ def test_run_pipeline_prints_output_sheet_url(capsys):
 
     captured = capsys.readouterr()
     assert "output_abc" in captured.out
+
+
+def test_run_pipeline_exits_when_subfolder_not_found(capsys):
+    """run_pipeline exits with sys.exit(1) when the aggregated subfolder is missing."""
+    with patch("src.main.validate_config"), \
+         patch("src.main.get_google_credentials") as mock_auth, \
+         patch("src.main.DriveClient") as MockDrive, \
+         patch("src.main.SheetsReader") as MockReader, \
+         patch("src.main.aggregate_stats") as mock_agg, \
+         patch("src.main.analyze_comments") as mock_analyze, \
+         patch("src.main.OutputWriter"):
+
+        mock_auth.return_value = MagicMock()
+        drive_instance = MockDrive.return_value
+        drive_instance.list_sheets_in_folder.return_value = []
+        drive_instance.find_subfolder.side_effect = ValueError("Subfolder 'Aggregated Info' not found")
+
+        mock_agg.return_value = {"all_tasks": __import__("pandas").DataFrame(), "summary": {}, "comments": []}
+        mock_analyze.return_value = {"raw_analysis": "", "comment_count": 0}
+
+        with pytest.raises(SystemExit) as exc_info:
+            from src.main import run_pipeline
+            run_pipeline(folder_id="folder123", aggregated_folder_name="Aggregated Info", output_sheet_name="Out")
+
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert "Aggregated Info" in captured.out
+
+
+def test_run_pipeline_continues_when_analyze_comments_fails():
+    """run_pipeline still writes stats and summary when comment analysis fails."""
+    mock_df = __import__("pandas").DataFrame({
+        "task": ["T"], "estimated_hours": [1.0], "actual_hours": [0.5],
+        "engineer": ["Alice"], "date": [""], "comments": ["test"], "source_sheet": ["S"],
+    })
+
+    with patch("src.main.validate_config"), \
+         patch("src.main.get_google_credentials") as mock_auth, \
+         patch("src.main.DriveClient") as MockDrive, \
+         patch("src.main.SheetsReader") as MockReader, \
+         patch("src.main.aggregate_stats") as mock_agg, \
+         patch("src.main.analyze_comments") as mock_analyze, \
+         patch("src.main.OutputWriter") as MockWriter:
+
+        mock_auth.return_value = MagicMock()
+        drive_instance = MockDrive.return_value
+        drive_instance.list_sheets_in_folder.return_value = [{"id": "s1", "name": "S1"}]
+        drive_instance.find_subfolder.return_value = "sf1"
+        drive_instance.get_or_create_sheet.return_value = "out1"
+
+        MockReader.return_value.read_sheet.return_value = mock_df
+        mock_agg.return_value = {
+            "all_tasks": mock_df,
+            "summary": {"total_tasks": 1, "engineers": []},
+            "comments": [{"text": "test", "engineer": "Alice", "task": "T", "date": ""}],
+        }
+        mock_analyze.side_effect = RuntimeError("Anthropic API failed")
+
+        writer_instance = MockWriter.return_value
+
+        from src.main import run_pipeline
+        run_pipeline(folder_id="folder123", aggregated_folder_name="Aggregated Info", output_sheet_name="Out")
+
+        # Statistics and Summary must still be written despite analysis failure
+        writer_instance.write_statistics.assert_called_once()
+        writer_instance.write_summary_row.assert_called_once()
