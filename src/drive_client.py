@@ -6,8 +6,18 @@ class DriveClient:
     def __init__(self, creds: Credentials):
         self._service = build("drive", "v3", credentials=creds)
 
+    # Extra kwargs required for Shared Drives (supportsAllDrives + includeItemsFromAllDrives).
+    # Regular My Drive folders work fine with these too, so we always include them.
+    _SHARED_DRIVE_KWARGS = dict(
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    )
+
     def list_sheets_in_folder(self, folder_id: str) -> list[dict]:
-        """Return [{id, name}] for all Google Sheets files in the given folder (all pages)."""
+        """Return [{id, name}] for all Google Sheets files in the given folder (all pages).
+
+        Works for both regular My Drive folders and Shared Drives.
+        """
         query = (
             f"'{folder_id}' in parents"
             " and mimeType='application/vnd.google-apps.spreadsheet'"
@@ -16,7 +26,12 @@ class DriveClient:
         files = []
         page_token = None
         while True:
-            kwargs = dict(q=query, fields="nextPageToken, files(id, name)", pageSize=1000)
+            kwargs = dict(
+                q=query,
+                fields="nextPageToken, files(id, name)",
+                pageSize=1000,
+                **self._SHARED_DRIVE_KWARGS,
+            )
             if page_token:
                 kwargs["pageToken"] = page_token
             response = self._service.files().list(**kwargs).execute()
@@ -42,7 +57,7 @@ class DriveClient:
         )
         response = (
             self._service.files()
-            .list(q=query, fields="files(id, name)")
+            .list(q=query, fields="files(id, name)", **self._SHARED_DRIVE_KWARGS)
             .execute()
         )
         files = response.get("files", [])
@@ -63,7 +78,7 @@ class DriveClient:
         )
         response = (
             self._service.files()
-            .list(q=query, fields="files(id, name)")
+            .list(q=query, fields="files(id, name)", **self._SHARED_DRIVE_KWARGS)
             .execute()
         )
         files = response.get("files", [])
@@ -75,5 +90,7 @@ class DriveClient:
             "mimeType": "application/vnd.google-apps.spreadsheet",
             "parents": [folder_id],
         }
-        created = self._service.files().create(body=metadata, fields="id").execute()
+        created = self._service.files().create(
+            body=metadata, fields="id", **self._SHARED_DRIVE_KWARGS
+        ).execute()
         return created["id"]
