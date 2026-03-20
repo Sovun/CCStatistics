@@ -21,7 +21,7 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 # Synonyms for canonical column names.
 # The reader will match sheet headers (case-insensitive) against these lists.
 COLUMN_SYNONYMS = {
-    "task": ["task", "task name", "name"],
+    "task": ["task", "task name"],
     "task_description": ["task description", "description", "details", "feature", "story", "ticket"],
     "estimated_hours": [
         "estimated hours", "estimate", "estimated", "without ai", "no ai",
@@ -45,3 +45,17 @@ COLUMN_SYNONYMS = {
 
 # Required canonical columns (rows missing all of these are dropped)
 REQUIRED_COLUMNS = {"task", "estimated_hours", "actual_hours"}
+
+
+def validate_config() -> None:
+    """Raise EnvironmentError if required config values are missing."""
+    missing = []
+    if not DRIVE_FOLDER_ID:
+        missing.append("DRIVE_FOLDER_ID")
+    if not ANTHROPIC_API_KEY:
+        missing.append("ANTHROPIC_API_KEY")
+    if missing:
+        raise EnvironmentError(
+            f"Required environment variables not set: {', '.join(missing)}. "
+            "Copy .env.example to .env and fill in the values."
+        )
