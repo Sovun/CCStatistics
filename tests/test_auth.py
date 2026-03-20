@@ -7,6 +7,7 @@ def test_get_google_credentials_returns_valid_credentials(tmp_path):
     """get_google_credentials returns credentials when token file exists and is valid."""
     mock_creds = MagicMock()
     mock_creds.valid = True
+    mock_creds.expired = False
 
     with patch("src.auth.os.path.exists", return_value=True), \
          patch("src.auth.Credentials") as MockCreds:
@@ -28,11 +29,9 @@ def test_get_google_credentials_refreshes_expired_token(tmp_path):
 
     with patch("src.auth.os.path.exists", return_value=True), \
          patch("src.auth.Credentials") as MockCreds, \
-         patch("src.auth.Request") as MockRequest, \
+         patch("src.auth.Request"), \
          patch("builtins.open", MagicMock()):
         MockCreds.from_authorized_user_file.return_value = mock_creds
-        mock_creds.refresh.return_value = None
-        mock_creds.valid = True  # after refresh
 
         result = get_google_credentials(
             credentials_file="creds.json",

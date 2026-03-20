@@ -18,7 +18,7 @@ def get_google_credentials(
     if os.path.exists(token_file):
         creds = Credentials.from_authorized_user_file(token_file, SCOPES)
 
-    if creds and creds.expired == True and creds.refresh_token:
+    if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         with open(token_file, "w") as f:
             f.write(creds.to_json())
