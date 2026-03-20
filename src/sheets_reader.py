@@ -25,11 +25,12 @@ class SheetsReader:
                     break
         return mapping
 
-    def _read_tab_values(self, spreadsheet_id: str, tab: str) -> list:
+    def _read_tab_values(self, spreadsheet_id: str, tab: str) -> list[list]:
+        safe_range = "'" + tab.replace("'", "''") + "'"
         result = (
             self._service.spreadsheets()
             .values()
-            .get(spreadsheetId=spreadsheet_id, range=tab)
+            .get(spreadsheetId=spreadsheet_id, range=safe_range)
             .execute()
         )
         return result.get("values", [])
@@ -54,9 +55,9 @@ class SheetsReader:
             if not REQUIRED_COLUMNS.issubset(mapped_canonical):
                 continue
 
-            # Pad short rows to header length
+            # Pad short rows to header length and truncate rows wider than header
             n_cols = len(headers)
-            data_rows = [r + [""] * (n_cols - len(r)) for r in rows[1:]]
+            data_rows = [(r + [""] * n_cols)[:n_cols] for r in rows[1:]]
 
             df = pd.DataFrame(data_rows, columns=headers)
             df = df.rename(columns=mapping)

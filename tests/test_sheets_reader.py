@@ -12,7 +12,7 @@ def mock_creds():
 @pytest.fixture
 def reader(mock_creds):
     with patch("src.sheets_reader.build"):
-        return SheetsReader(mock_creds)
+        yield SheetsReader(mock_creds)
 
 
 def _setup_service(reader, values, tab_name="Sheet1"):
@@ -121,7 +121,7 @@ def test_read_sheet_scans_multiple_tabs_and_uses_first_valid(reader):
 
     def get_values(spreadsheetId, range, **kwargs):
         mock = MagicMock()
-        if range == "Meta":
+        if range == "'Meta'":
             mock.execute.return_value = {"values": [["Notes"], ["some note"]]}
         else:
             mock.execute.return_value = {
