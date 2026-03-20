@@ -19,6 +19,7 @@ def test_analyze_comments_calls_claude_api(monkeypatch):
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="## Benefits\n- Great for boilerplate\n## Pain Points\n- Complex logic harder")]
+    mock_response.stop_reason = "end_turn"
 
     with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
         instance = MockClient.return_value
@@ -39,6 +40,7 @@ def test_analyze_comments_includes_all_texts_in_prompt():
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="## Analysis\n- noted")]
+    mock_response.stop_reason = "end_turn"
 
     with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
         instance = MockClient.return_value
@@ -59,6 +61,7 @@ def test_analyze_comments_uses_configured_model():
 
     mock_response = MagicMock()
     mock_response.content = [MagicMock(text="## Summary\n- good")]
+    mock_response.stop_reason = "end_turn"
 
     with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
         instance = MockClient.return_value
