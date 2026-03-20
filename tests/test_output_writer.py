@@ -47,7 +47,7 @@ def test_write_statistics_calls_update_with_header_and_rows(writer):
     update_call = mock_service.spreadsheets().values().update
     update_call.assert_called()
     call_kwargs = update_call.call_args.kwargs
-    assert call_kwargs["range"] == "Statistics!A1"
+    assert call_kwargs["range"] == "'Statistics'!A1"
     # Header row must be the DataFrame column names
     assert call_kwargs["body"]["values"][0] == list(df.columns)
     # Data row count matches
@@ -116,3 +116,32 @@ def test_write_statistics_creates_sheet_tab_if_not_exists(writer):
 
     # batchUpdate should have been called to add the new sheet
     mock_service.spreadsheets().batchUpdate.assert_called()
+
+
+def test_write_statistics_quotes_sheet_name_in_range(writer):
+    """write_statistics uses single-quoted sheet name in the range string."""
+    mock_service = _attach_mock_service(writer)
+
+    df = pd.DataFrame({"task": ["T"], "estimated_hours": [1.0], "actual_hours": [0.5]})
+    writer.write_statistics("sid", df, sheet_name="Q1 Stats")
+
+    update_call = mock_service.spreadsheets().values().update
+    call_kwargs = update_call.call_args.kwargs
+    assert call_kwargs["range"] == "'Q1 Stats'!A1"
+
+
+def test_write_statistics_raises_runtime_error_on_api_failure(writer):
+    """write_statistics raises RuntimeError when Sheets API call fails."""
+    from googleapiclient.errors import HttpError
+    mock_service = _attach_mock_service(writer)
+
+    mock_resp = MagicMock()
+    mock_resp.status = 403
+    mock_resp.reason = "Forbidden"
+    mock_service.spreadsheets().values().clear().execute.side_effect = HttpError(
+        resp=mock_resp, content=b"Forbidden"
+    )
+
+    df = pd.DataFrame({"task": ["T"], "estimated_hours": [1.0], "actual_hours": [0.5]})
+    with pytest.raises(RuntimeError, match="Failed to write to sheet"):
+        writer.write_statistics("sid", df)

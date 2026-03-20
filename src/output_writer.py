@@ -1,12 +1,18 @@
 import pandas as pd
 from datetime import datetime, timezone
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
 
 
 class OutputWriter:
     def __init__(self, creds: Credentials):
         self._service = build("sheets", "v4", credentials=creds)
+
+    @staticmethod
+    def _quote_sheet_name(name: str) -> str:
+        """Wrap sheet name in single quotes for A1 notation, escaping internal quotes."""
+        return "'" + name.replace("'", "''") + "'"
 
     def _ensure_sheet_exists(self, spreadsheet_id: str, sheet_name: str) -> None:
         """Create the named sheet tab if it does not already exist."""
@@ -19,19 +25,25 @@ class OutputWriter:
             ).execute()
 
     def _clear_and_write(
-        self, spreadsheet_id: str, sheet_name: str, values: list
+        self, spreadsheet_id: str, sheet_name: str, values: list[list]
     ) -> None:
         self._ensure_sheet_exists(spreadsheet_id, sheet_name)
-        self._service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A1:ZZ100000",
-        ).execute()
-        self._service.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A1",
-            valueInputOption="USER_ENTERED",
-            body={"values": values},
-        ).execute()
+        quoted = self._quote_sheet_name(sheet_name)
+        try:
+            self._service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=f"{quoted}!A1:ZZ100000",
+            ).execute()
+            self._service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{quoted}!A1",
+                valueInputOption="USER_ENTERED",
+                body={"values": values},
+            ).execute()
+        except HttpError as e:
+            raise RuntimeError(
+                f"Failed to write to sheet '{sheet_name}' in spreadsheet {spreadsheet_id}: {e}"
+            ) from e
 
     def write_statistics(
         self,
@@ -53,6 +65,11 @@ class OutputWriter:
     ) -> None:
         """Write key-value summary stats to a dedicated tab."""
         generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        engineers = summary.get("engineers", [])
+        if isinstance(engineers, list):
+            engineers_str = ", ".join(str(e) for e in engineers)
+        else:
+            engineers_str = str(engineers) if engineers is not None else ""
         rows = [
             ["Metric", "Value"],
             ["Generated at", generated_at],
@@ -61,7 +78,7 @@ class OutputWriter:
             ["total_actual_hours", summary.get("total_actual_hours", "")],
             ["total_hours_saved", summary.get("total_hours_saved", "")],
             ["overall_efficiency_ratio", summary.get("overall_efficiency_ratio", "")],
-            ["engineers", ", ".join(summary.get("engineers", []))],
+            ["engineers", engineers_str],
         ]
         self._clear_and_write(spreadsheet_id, sheet_name, rows)
 
