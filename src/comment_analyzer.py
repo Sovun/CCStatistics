@@ -53,8 +53,17 @@ def analyze_comments(
     if not comments:
         return {"raw_analysis": "", "comment_count": 0}
 
+    # Rough token estimate: 1 token ≈ 4 chars
+    MAX_INPUT_CHARS = 400_000  # ~100k tokens, well within Claude's 200k context window
+    total_chars = sum(len(c.get("text", "")) for c in comments)
+    if total_chars > MAX_INPUT_CHARS:
+        raise ValueError(
+            f"Comment input too large ({total_chars:,} chars ≈ {total_chars // 4:,} tokens). "
+            f"Maximum is ~100k tokens. Consider filtering or batching comments."
+        )
+
     comments_block = "\n\n".join(
-        f"[{c.get('engineer', 'Unknown')} | {c.get('task', '')} | {c.get('date', '')}]\n{c['text']}"
+        f"[{c.get('engineer', 'Unknown')} | {c.get('task', '')} | {c.get('date', '')}]\n{c.get('text', '')}"
         for c in comments
     )
 
@@ -66,11 +75,25 @@ def analyze_comments(
     )
 
     client = anthropic.Anthropic(api_key=api_key)
-    response = client.messages.create(
-        model=model,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as e:
+        raise RuntimeError(
+            f"Claude API call failed during comment analysis: {e}"
+        ) from e
+
+    if response.stop_reason != "end_turn":
+        import warnings
+        warnings.warn(
+            f"Claude response was truncated (stop_reason={response.stop_reason!r}). "
+            "Analysis may be incomplete. Consider reducing the number of comments.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     raw_analysis = response.content[0].text
     return {"raw_analysis": raw_analysis, "comment_count": len(comments)}

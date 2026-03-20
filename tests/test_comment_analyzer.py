@@ -1,4 +1,5 @@
 import pytest
+import anthropic
 from unittest.mock import MagicMock, patch
 from src.comment_analyzer import analyze_comments
 
@@ -67,3 +68,47 @@ def test_analyze_comments_uses_configured_model():
 
         call_args = instance.messages.create.call_args
         assert call_args.kwargs["model"] == "claude-opus-4-6"
+
+
+def test_analyze_comments_raises_on_api_error():
+    """analyze_comments raises RuntimeError when Anthropic API call fails."""
+    comments = [{"text": "Some feedback", "engineer": "Alice", "task": "T", "date": ""}]
+
+    with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
+        instance = MockClient.return_value
+        instance.messages.create.side_effect = anthropic.APIConnectionError(request=MagicMock())
+
+        with pytest.raises(RuntimeError, match="Claude API call failed"):
+            analyze_comments(comments, api_key="test-key")
+
+
+def test_analyze_comments_raises_on_oversized_input():
+    """analyze_comments raises ValueError when total comment text exceeds token limit."""
+    # Create a comment with ~500k chars (exceeds 400k limit)
+    huge_comment = {"text": "x" * 500_000, "engineer": "Alice", "task": "T", "date": ""}
+
+    with pytest.raises(ValueError, match="Comment input too large"):
+        analyze_comments([huge_comment], api_key="test-key")
+
+
+def test_analyze_comments_warns_on_truncated_response():
+    """analyze_comments emits RuntimeWarning when Claude response is truncated."""
+    import warnings
+    comments = [{"text": "Good feedback", "engineer": "Alice", "task": "T", "date": ""}]
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Summary\n- partial")]
+    mock_response.stop_reason = "max_tokens"  # truncated
+
+    with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
+        instance = MockClient.return_value
+        instance.messages.create.return_value = mock_response
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = analyze_comments(comments, api_key="test-key")
+
+        assert any(issubclass(warning.category, RuntimeWarning) for warning in w)
+        assert "truncated" in str(w[0].message).lower()
+
+    assert result["raw_analysis"] == "## Summary\n- partial"
