@@ -91,6 +91,6 @@ class DriveClient:
             "parents": [folder_id],
         }
         created = self._service.files().create(
-            body=metadata, fields="id", **self._SHARED_DRIVE_KWARGS
+            body=metadata, fields="id", supportsAllDrives=True
         ).execute()
         return created["id"]

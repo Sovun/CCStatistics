@@ -16,7 +16,9 @@ def aggregate_stats(frames: list[pd.DataFrame]) -> dict:
 
     combined["hours_saved"] = combined["estimated_hours"] - combined["actual_hours"]
     safe_est = combined["estimated_hours"].where(combined["estimated_hours"] > 0)
-    combined["efficiency_ratio"] = combined["actual_hours"] / safe_est
+    # Always (re)compute deviation as actual/estimated for consistency across all sheets.
+    # Overwrites any deviation value the engineer may have filled in their source sheet.
+    combined["deviation"] = combined["actual_hours"] / safe_est
 
     total_estimated = combined["estimated_hours"].sum(min_count=1)
     total_actual = combined["actual_hours"].sum(min_count=1)
@@ -31,6 +33,26 @@ def aggregate_stats(frames: list[pd.DataFrame]) -> dict:
         "engineers": sorted(combined["engineer"].dropna().unique().tolist())
         if "engineer" in combined.columns else [],
     }
+
+    # Extended metrics
+    te = summary["total_estimated_hours"]
+    ta = summary["total_actual_hours"]
+    ths = summary["total_hours_saved"]
+    tt = summary["total_tasks"]
+    summary["engineers_with_data"] = len(summary["engineers"])
+    summary["avg_estimated_per_task"] = round(te / tt, 2) if tt > 0 else 0.0
+    summary["avg_actual_per_task"] = round(ta / tt, 2) if tt > 0 else 0.0
+    summary["avg_hours_saved_per_task"] = round(ths / tt, 2) if tt > 0 else 0.0
+    summary["time_savings_pct"] = round((ths / te) * 100, 1) if te > 0 else 0.0
+    summary["speed_multiplier"] = round(te / ta, 2) if ta > 0 else 0.0
+    summary["equiv_days_saved"] = round(ths / 8, 1)
+    if "deviation" in combined.columns:
+        dev = combined["deviation"].dropna()
+        summary["tasks_significantly_faster"] = int((dev < 0.75).sum())
+        summary["tasks_no_benefit"] = int((dev >= 1.0).sum())
+    else:
+        summary["tasks_significantly_faster"] = 0
+        summary["tasks_no_benefit"] = 0
 
     comments = []
     if "comments" in combined.columns:

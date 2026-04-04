@@ -1,4 +1,6 @@
 import sys
+from datetime import datetime, timezone
+from googleapiclient.errors import HttpError
 from src.config import (
     GOOGLE_CREDENTIALS_FILE,
     GOOGLE_TOKEN_FILE,
@@ -16,18 +18,22 @@ from src.comment_analyzer import analyze_comments
 from src.output_writer import OutputWriter
 
 
-OUTPUT_SHEET_NAME = "CC Statistics Aggregated"
+def _output_sheet_name() -> str:
+    date_str = datetime.now(timezone.utc).strftime("%Y.%m.%d")
+    return f"{date_str} CC Statistics Aggregated"
 
 
 def run_pipeline(
     folder_id: str,
     aggregated_folder_name: str = AGGREGATED_FOLDER_NAME,
-    output_sheet_name: str = OUTPUT_SHEET_NAME,
+    output_sheet_name: str = None,
     credentials_file: str = GOOGLE_CREDENTIALS_FILE,
     token_file: str = GOOGLE_TOKEN_FILE,
     anthropic_api_key: str = ANTHROPIC_API_KEY,
     claude_model: str = CLAUDE_MODEL,
 ) -> None:
+    if output_sheet_name is None:
+        output_sheet_name = _output_sheet_name()
     validate_config()
 
     print("Authenticating with Google...")
@@ -48,7 +54,7 @@ def run_pipeline(
             df = reader.read_sheet(sheet["id"], engineer_name=sheet["name"])
             frames.append(df)
             print(f"    -> {len(df)} task rows loaded.")
-        except ValueError as e:
+        except (ValueError, HttpError, Exception) as e:
             print(f"    -> Skipped: {e}")
 
     print("Aggregating statistics...")
@@ -94,6 +100,9 @@ def run_pipeline(
 
     print("Writing Insights tab...")
     writer.write_insights(output_sheet_id, analysis)
+
+    print("Removing default Sheet1 if present...")
+    writer.delete_sheet_if_exists(output_sheet_id, "Sheet1")
 
     print("\nDone!")
     print(f"https://docs.google.com/spreadsheets/d/{output_sheet_id}")
