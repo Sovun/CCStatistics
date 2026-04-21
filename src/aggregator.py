@@ -14,11 +14,11 @@ def aggregate_stats(frames: list[pd.DataFrame]) -> dict:
 
     combined = pd.concat(frames, ignore_index=True)
 
-    combined["hours_saved"] = combined["estimated_hours"] - combined["actual_hours"]
+    combined.loc[:, "hours_saved"] = combined["estimated_hours"] - combined["actual_hours"]
     safe_est = combined["estimated_hours"].where(combined["estimated_hours"] > 0)
     # Always (re)compute deviation as actual/estimated for consistency across all sheets.
     # Overwrites any deviation value the engineer may have filled in their source sheet.
-    combined["deviation"] = combined["actual_hours"] / safe_est
+    combined.loc[:, "deviation"] = combined["actual_hours"] / safe_est
 
     total_estimated = combined["estimated_hours"].sum(min_count=1)
     total_actual = combined["actual_hours"].sum(min_count=1)

@@ -34,6 +34,10 @@ _VERY_LIGHT_GRAY = {"red": 0.96, "green": 0.96, "blue": 0.96}
 _WHITE = {"red": 1.0, "green": 1.0, "blue": 1.0}
 _DARK_GRAY = {"red": 0.2, "green": 0.2, "blue": 0.2}
 _MED_GRAY = {"red": 0.45, "green": 0.45, "blue": 0.45}
+# Sprint winner highlight colors
+_AMBER_HEADER = {"red": 0.72, "green": 0.45, "blue": 0.08}   # deep amber for header bg
+_AMBER_BG = {"red": 1.0, "green": 0.97, "blue": 0.88}         # pale amber for content bg
+_AMBER_TEXT = {"red": 0.45, "green": 0.28, "blue": 0.03}      # dark amber for headline text
 
 
 class OutputWriter:
@@ -116,7 +120,7 @@ class OutputWriter:
 
         # 2. Format deviation as percentage string for display (e.g. 0.5 → "50%")
         if "deviation" in df.columns:
-            df["deviation"] = df["deviation"].apply(
+            df.loc[:, "deviation"] = df["deviation"].apply(
                 lambda v: f"{v:.0%}" if pd.notna(v) and isinstance(v, float) else ""
             )
 
@@ -603,6 +607,21 @@ class OutputWriter:
             {"text": stats_line, "type": "meta"},
             {"text": scope_line, "type": "meta"},
         ]
+
+        # Sprint winner section (inserted between meta and AI analysis)
+        sprint_winner = analysis.get("sprint_winner")
+        if sprint_winner and sprint_winner.get("task"):
+            items.append({"text": "Claude Code Win of the Sprint", "type": "sprint_win_header"})
+            task_line = sprint_winner.get("task", "")
+            engineer = sprint_winner.get("engineer", "")
+            if engineer:
+                task_line = f"{task_line}  —  {engineer}"
+            items.append({"text": task_line, "type": "sprint_win_task"})
+            if sprint_winner.get("headline"):
+                items.append({"text": sprint_winner["headline"], "type": "sprint_win_headline"})
+            if sprint_winner.get("reasoning"):
+                items.append({"text": sprint_winner["reasoning"], "type": "sprint_win_body"})
+
         for line in raw.split("\n"):
             stripped = line.strip()
             if stripped.startswith("## ") or stripped.startswith("# "):
@@ -614,10 +633,10 @@ class OutputWriter:
             else:
                 items.append({"text": stripped, "type": "body"})
 
-        # Resolve rich text for bullet and body rows
+        # Resolve rich text for bullet, body, and sprint winner rows
         bullet_prefix = "  \u2022  "
         for item in items:
-            if item["type"] in ("bullet", "body"):
+            if item["type"] in ("bullet", "body", "sprint_win_task", "sprint_win_headline", "sprint_win_body"):
                 plain, runs = self._parse_markdown_runs(item["text"])
                 if item["type"] == "bullet":
                     # Shift run indices past the bullet prefix
@@ -668,7 +687,10 @@ class OutputWriter:
         ).execute()
 
         # Build index lists per type for visual formatter
-        meta = {t: [] for t in ("title", "meta", "section_header", "bullet", "body")}
+        meta = {t: [] for t in (
+            "title", "meta", "section_header", "bullet", "body",
+            "sprint_win_header", "sprint_win_task", "sprint_win_headline", "sprint_win_body",
+        )}
         for i, item in enumerate(items):
             meta[item["type"]].append(i)
         meta["total_rows"] = len(items)
@@ -897,6 +919,116 @@ class OutputWriter:
                 }
             })
 
+        # Sprint win header row — deep amber bg, white bold text
+        for r in meta["sprint_win_header"]:
+            requests += [
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": r, "endRowIndex": r + 1,
+                            "startColumnIndex": 0, "endColumnIndex": 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _AMBER_HEADER,
+                                "textFormat": {
+                                    "bold": True,
+                                    "foregroundColor": _WHITE,
+                                    "fontSize": 11,
+                                },
+                                "verticalAlignment": "MIDDLE",
+                                "padding": {"top": 4, "bottom": 4, "left": 12},
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment,padding)",
+                    }
+                },
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "dimension": "ROWS",
+                            "startIndex": r, "endIndex": r + 1,
+                        },
+                        "properties": {"pixelSize": 30},
+                        "fields": "pixelSize",
+                    }
+                },
+            ]
+
+        # Sprint win task row — pale amber bg, bold task + engineer
+        for r in meta["sprint_win_task"]:
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r, "endRowIndex": r + 1,
+                        "startColumnIndex": 0, "endColumnIndex": 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": _AMBER_BG,
+                            "textFormat": {
+                                "bold": True,
+                                "foregroundColor": _DARK_GRAY,
+                                "fontSize": 10,
+                            },
+                            "padding": {"left": 14},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,padding)",
+                }
+            })
+
+        # Sprint win headline row — pale amber bg, dark amber italic text
+        for r in meta["sprint_win_headline"]:
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r, "endRowIndex": r + 1,
+                        "startColumnIndex": 0, "endColumnIndex": 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": _AMBER_BG,
+                            "textFormat": {
+                                "italic": True,
+                                "foregroundColor": _AMBER_TEXT,
+                                "fontSize": 11,
+                            },
+                            "padding": {"left": 14},
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,padding)",
+                }
+            })
+
+        # Sprint win body row — pale amber bg, regular text, wrapped
+        for r in meta["sprint_win_body"]:
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": r, "endRowIndex": r + 1,
+                        "startColumnIndex": 0, "endColumnIndex": 1,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": _AMBER_BG,
+                            "textFormat": {
+                                "foregroundColor": _DARK_GRAY,
+                                "fontSize": 10,
+                            },
+                            "padding": {"left": 14},
+                            "wrapStrategy": "WRAP",
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,padding,wrapStrategy)",
+                }
+            })
+
         # First batchUpdate: visual formatting (wrap must be applied before auto-resize)
         self._service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id, body={"requests": requests}
@@ -926,6 +1058,11 @@ class OutputWriter:
                 "properties": {"pixelSize": 20}, "fields": "pixelSize",
             }})
         for r in meta["section_header"]:
+            height_requests.append({"updateDimensionProperties": {
+                "range": {"sheetId": sheet_id, "dimension": "ROWS", "startIndex": r, "endIndex": r + 1},
+                "properties": {"pixelSize": 30}, "fields": "pixelSize",
+            }})
+        for r in meta["sprint_win_header"]:
             height_requests.append({"updateDimensionProperties": {
                 "range": {"sheetId": sheet_id, "dimension": "ROWS", "startIndex": r, "endIndex": r + 1},
                 "properties": {"pixelSize": 30}, "fields": "pixelSize",

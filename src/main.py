@@ -1,5 +1,5 @@
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from googleapiclient.errors import HttpError
 from src.config import (
     GOOGLE_CREDENTIALS_FILE,
@@ -14,8 +14,52 @@ from src.auth import get_google_credentials
 from src.drive_client import DriveClient
 from src.sheets_reader import SheetsReader
 from src.aggregator import aggregate_stats
-from src.comment_analyzer import analyze_comments
+from src.comment_analyzer import analyze_comments, pick_sprint_winner
 from src.output_writer import OutputWriter
+
+
+def _get_sprint_tasks(df) -> list[dict]:
+    """Return tasks from the current week that have a task description.
+
+    Tries to parse the 'date' column to filter to Mon-Sun of the current week.
+    Falls back to all tasks with descriptions if no dates can be parsed or no
+    weekly matches are found.
+    """
+    import pandas as pd
+
+    if df is None or df.empty or "task_description" not in df.columns:
+        return []
+
+    has_desc = df["task_description"].astype(str).str.strip().ne("").fillna(False)
+    candidates = df[has_desc].copy()
+    if candidates.empty:
+        return []
+
+    # Attempt current-week filtering
+    if "date" in candidates.columns:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_end = week_start + timedelta(days=6)             # Sunday
+
+        _DATE_FMTS = ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d", "%d-%m-%Y")
+
+        def _parse(s: str) -> "date | None":
+            for fmt in _DATE_FMTS:
+                try:
+                    return datetime.strptime(str(s).strip(), fmt).date()
+                except ValueError:
+                    pass
+            return None
+
+        parsed = candidates["date"].apply(_parse)
+        in_week = parsed.apply(lambda d: d is not None and week_start <= d <= week_end)
+        weekly = candidates[in_week]
+        if not weekly.empty:
+            candidates = weekly
+
+    fields = ["task", "task_description", "engineer", "date", "hours_saved", "comments"]
+    available = [f for f in fields if f in candidates.columns]
+    return candidates[available].fillna("").astype(str).to_dict("records")
 
 
 def _output_sheet_name() -> str:
@@ -88,6 +132,23 @@ def run_pipeline(
         print(f"  WARNING: Comment analysis failed: {e}")
         print("  Insights tab will be skipped.")
         analysis = {"raw_analysis": "", "comment_count": len(comments)}
+
+    sprint_tasks = _get_sprint_tasks(result["all_tasks"])
+    print(f"Selecting 'Claude Code win of the sprint' from {len(sprint_tasks)} eligible task(s)...")
+    try:
+        sprint_winner = pick_sprint_winner(
+            sprint_tasks, api_key=anthropic_api_key, model=claude_model
+        )
+        if sprint_winner:
+            print(f"  Winner: \"{sprint_winner['task']}\" by {sprint_winner['engineer']}")
+            print(f"  Cost: ~${sprint_winner['cost_usd']:.4f}")
+        else:
+            print("  No eligible tasks found — sprint winner section will be skipped.")
+    except (RuntimeError, ValueError) as e:
+        print(f"  WARNING: Sprint winner selection failed: {e}")
+        sprint_winner = None
+
+    analysis["sprint_winner"] = sprint_winner
 
     print(f"Getting or creating output sheet '{output_sheet_name}'...")
     output_sheet_id = drive.get_or_create_sheet(subfolder_id, output_sheet_name)

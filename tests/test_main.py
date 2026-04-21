@@ -210,3 +210,66 @@ def test_run_pipeline_continues_when_analyze_comments_fails():
         # Statistics and Summary must still be written despite analysis failure
         writer_instance.write_statistics.assert_called_once()
         writer_instance.write_summary_row.assert_called_once()
+
+
+def test_run_pipeline_calls_sprint_winner_when_descriptions_present():
+    """run_pipeline calls pick_sprint_winner when tasks have task_description column."""
+    mock_df = __import__("pandas").DataFrame({
+        "task": ["Build auth module"],
+        "task_description": ["Rewrote OAuth flow using Claude"],
+        "estimated_hours": [8.0],
+        "actual_hours": [2.0],
+        "hours_saved": [6.0],
+        "engineer": ["Alice"],
+        "date": ["2026-04-08"],
+        "comments": ["Great use of Claude"],
+        "source_sheet": ["Sheet1"],
+    })
+
+    with patch("src.main.validate_config"), \
+         patch("src.main.get_google_credentials") as mock_auth, \
+         patch("src.main.DriveClient") as MockDrive, \
+         patch("src.main.SheetsReader") as MockReader, \
+         patch("src.main.aggregate_stats") as mock_agg, \
+         patch("src.main.analyze_comments") as mock_analyze, \
+         patch("src.main.pick_sprint_winner") as mock_winner, \
+         patch("src.main.OutputWriter") as MockWriter:
+
+        mock_auth.return_value = MagicMock()
+        drive_instance = MockDrive.return_value
+        drive_instance.list_sheets_in_folder.return_value = [{"id": "s1", "name": "Alice Stats"}]
+        drive_instance.find_subfolder.return_value = "subfolder123"
+        drive_instance.get_or_create_sheet.return_value = "output_id"
+
+        MockReader.return_value.read_sheet.return_value = mock_df
+        mock_agg.return_value = {
+            "all_tasks": mock_df,
+            "summary": {"total_tasks": 1, "engineers": ["Alice"]},
+            "comments": [{"text": "Great use of Claude", "engineer": "Alice", "task": "Build auth module", "date": ""}],
+        }
+        mock_analyze.return_value = {"raw_analysis": "## Benefits\n- Good", "comment_count": 1}
+        mock_winner.return_value = {
+            "task": "Build auth module",
+            "engineer": "Alice",
+            "headline": "OAuth rewrite in two hours",
+            "reasoning": "Claude helped rewrite the whole module quickly.",
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cost_usd": 0.001,
+        }
+
+        from src.main import run_pipeline
+        run_pipeline(
+            folder_id="folder123",
+            aggregated_folder_name="Aggregated Info",
+            output_sheet_name="CC Statistics Aggregated",
+        )
+
+        mock_winner.assert_called_once()
+        # The analysis passed to write_insights must contain the sprint_winner
+        writer_instance = MockWriter.return_value
+        write_insights_call = writer_instance.write_insights.call_args
+        analysis_arg = write_insights_call.args[1] if write_insights_call.args[1:] else write_insights_call.kwargs.get("analysis")
+        assert analysis_arg is not None
+        assert analysis_arg.get("sprint_winner") is not None
+        assert analysis_arg["sprint_winner"]["task"] == "Build auth module"
