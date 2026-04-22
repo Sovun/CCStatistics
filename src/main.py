@@ -1,4 +1,13 @@
 import sys
+import os
+
+# Re-exec using the project venv's Python if we're running outside it.
+_venv_python = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv", "bin", "python3")
+)
+if os.path.exists(_venv_python) and os.path.abspath(sys.executable) != _venv_python:
+    os.execv(_venv_python, [_venv_python, "-m", "src.main"] + sys.argv[1:])
+
 from datetime import datetime, timezone, date, timedelta
 from googleapiclient.errors import HttpError
 from src.config import (
