@@ -107,6 +107,19 @@ def test_read_sheet_coerces_hours_to_float(reader):
     assert math.isnan(df.iloc[1]["estimated_hours"])
 
 
+def test_read_sheet_normalizes_comma_decimal_separator(reader):
+    """read_sheet treats '3,5' as 3.5 (European locale convention)."""
+    values = [
+        ["Task", "Estimated Hours", "Actual Hours"],
+        ["Task A", "3,5", "1,25"],
+    ]
+    _setup_service(reader, values)
+
+    df = reader.read_sheet("spreadsheet123", engineer_name="Eve")
+    assert df.iloc[0]["estimated_hours"] == 3.5
+    assert df.iloc[0]["actual_hours"] == 1.25
+
+
 def test_read_sheet_scans_multiple_tabs_and_uses_first_valid(reader):
     """read_sheet tries each tab and uses the first one with recognizable columns."""
     mock_service = MagicMock()

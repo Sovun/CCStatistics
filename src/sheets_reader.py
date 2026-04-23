@@ -48,10 +48,16 @@ class SheetsReader:
 
     def _read_tab_values(self, spreadsheet_id: str, tab: str) -> list[list]:
         safe_range = "'" + tab.replace("'", "''") + "'"
+        # UNFORMATTED_VALUE returns raw stored values (e.g. 0.5 for a 50%-formatted
+        # cell) instead of display strings, avoiding locale separators and "%" suffixes.
         result = _execute_with_backoff(
             self._service.spreadsheets()
             .values()
-            .get(spreadsheetId=spreadsheet_id, range=safe_range)
+            .get(
+                spreadsheetId=spreadsheet_id,
+                range=safe_range,
+                valueRenderOption="UNFORMATTED_VALUE",
+            )
         )
         return result.get("values", [])
 
@@ -93,10 +99,19 @@ class SheetsReader:
             canonical_cols = [c for c in df.columns if c in COLUMN_SYNONYMS]
             df = df[canonical_cols].copy()
 
-            # Coerce numeric columns
+            # Coerce numeric columns with progressive normalization:
+            #   1. stringify (handles mixed-type columns from UNFORMATTED_VALUE)
+            #   2. comma → dot for locale decimal separators ("3,5" → "3.5")
+            #   3. extract leading numeric token to strip units/symbols ("~2h", "50%")
             for col in ("estimated_hours", "actual_hours", "deviation"):
                 if col in df.columns:
-                    df.loc[:, col] = pd.to_numeric(df[col], errors="coerce")
+                    normalized = (
+                        df[col]
+                        .astype(str)
+                        .str.replace(",", ".", regex=False)
+                        .str.extract(r"(-?\d+(?:\.\d+)?)", expand=False)
+                    )
+                    df.loc[:, col] = pd.to_numeric(normalized, errors="coerce")
 
             # Drop rows with empty task name
             df = df[df["task"].str.strip().ne("")]
