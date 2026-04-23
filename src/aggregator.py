@@ -20,8 +20,11 @@ def aggregate_stats(frames: list[pd.DataFrame]) -> dict:
     # Overwrites any deviation value the engineer may have filled in their source sheet.
     combined.loc[:, "deviation"] = combined["actual_hours"] / safe_est
 
-    total_estimated = combined["estimated_hours"].sum(min_count=1)
-    total_actual = combined["actual_hours"].sum(min_count=1)
+    # Only include rows where both hours are present to avoid asymmetric NaN skipping
+    # inflating hours_saved when one side is missing.
+    complete = combined.dropna(subset=["estimated_hours", "actual_hours"])
+    total_estimated = complete["estimated_hours"].sum(min_count=1)
+    total_actual = complete["actual_hours"].sum(min_count=1)
     summary = {
         "total_tasks": len(combined),
         "total_estimated_hours": round(float(total_estimated), 2),
