@@ -55,6 +55,27 @@ def test_analyze_comments_includes_all_texts_in_prompt():
     assert "Tests were hard to write" in prompt_content
 
 
+def test_analyze_comments_includes_total_task_count_in_prompt():
+    """analyze_comments includes both comment_count and total_task_count in the prompt."""
+    comments = [
+        {"text": "Good experience", "engineer": "Alice", "task": "Task A", "date": "2024-01-10"},
+    ]
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="## Summary\n- good")]
+    mock_response.stop_reason = "end_turn"
+
+    with patch("src.comment_analyzer.anthropic.Anthropic") as MockClient:
+        instance = MockClient.return_value
+        instance.messages.create.return_value = mock_response
+
+        analyze_comments(comments, api_key="test-key", total_tasks=20)
+
+        prompt_content = instance.messages.create.call_args.kwargs["messages"][0]["content"]
+
+    assert "1 of 20 tasks" in prompt_content
+
+
 def test_analyze_comments_uses_configured_model():
     """analyze_comments uses the model argument when calling Claude API."""
     comments = [{"text": "Good tool", "engineer": "Alice", "task": "T", "date": ""}]

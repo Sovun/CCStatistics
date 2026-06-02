@@ -135,7 +135,10 @@ def run_pipeline(
     print(f"Analyzing {len(comments)} comment(s) with Claude AI...")
     try:
         analysis = analyze_comments(
-            comments, api_key=anthropic_api_key, model=claude_model
+            comments,
+            api_key=anthropic_api_key,
+            model=claude_model,
+            total_tasks=summary.get("total_tasks", 0),
         )
     except (RuntimeError, ValueError) as e:
         print(f"  WARNING: Comment analysis failed: {e}")

@@ -14,7 +14,7 @@ _PRICING_PER_MTOK = {
 _ANALYSIS_PROMPT = """\
 You are analyzing feedback from software engineers about their experience using Claude Code AI assistant for development tasks.
 
-Below are comments collected from {engineer_count} engineers across {comment_count} tasks.
+Below are comments collected from {engineer_count} engineers. {comment_count} of {total_task_count} tasks had written feedback.
 
 ---
 {comments_block}
@@ -179,6 +179,7 @@ def analyze_comments(
     comments: list[dict],
     api_key: str,
     model: str = CLAUDE_MODEL,
+    total_tasks: int = 0,
 ) -> dict:
     """Send engineer comments to Claude for qualitative analysis.
 
@@ -211,6 +212,7 @@ def analyze_comments(
     prompt = _ANALYSIS_PROMPT.format(
         engineer_count=len(engineer_names),
         comment_count=len(comments),
+        total_task_count=total_tasks or len(comments),
         comments_block=comments_block,
     )
 
